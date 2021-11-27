@@ -1,14 +1,14 @@
-use itertools::Itertools;
 use rayon::prelude::*;
+use std::time::{Duration, Instant};
 
 #[derive(Clone, PartialEq)]
-struct SudokuGrid {
+struct Sudoku {
   array: [u8; 81],
 }
 
-impl SudokuGrid {
+impl Sudoku {
   fn new(starting_array: [u8; 81]) -> Self {
-    SudokuGrid { array: starting_array }
+    Sudoku { array: starting_array }
   }
 
   fn from_str(starting_string: &str) -> Self {
@@ -49,13 +49,13 @@ impl SudokuGrid {
   }
 }
 
-impl Default for SudokuGrid {
+impl Default for Sudoku {
   fn default() -> Self {
     Self { array: [0; 81] }
   }
 }
 
-impl ToString for SudokuGrid {
+impl ToString for Sudoku {
   fn to_string(&self) -> String {
     let mut string = String::new();
     for y in 0..9 {
@@ -79,74 +79,94 @@ impl ToString for SudokuGrid {
   }
 }
 
-fn main() {
-  let file = "easy.txt";
+struct SudokuSolution {
+  initial: Sudoku,
+  solution: Sudoku,
+  duration: Duration,
+}
 
-  let sudokus: Vec<SudokuGrid> = std::fs::read_to_string(file)
-    .expect(&format!("'{}' not found", file))
-    .par_lines()
-    .map(|line| SudokuGrid::from_str(line.split_whitespace().nth(1).unwrap()))
-    .collect();
-
+fn solve_sudoku(sudoku: &Sudoku) -> SudokuSolution {
   struct RecursionState {
-    solved: bool,
-    solved_sudoku: SudokuGrid,
-    all_sudokus: Vec<SudokuGrid>,
+    solved_sudoku: Sudoku,
   }
 
-  let sudoku = sudokus.get(0).unwrap().to_owned();
-
   let mut state = RecursionState {
-    solved: false,
-    solved_sudoku: SudokuGrid::default(),
-    all_sudokus: vec![sudoku.clone()],
+    solved_sudoku: Sudoku::default(),
   };
 
-  fn recur(sudoku: SudokuGrid, state: &mut RecursionState) {
-    if state.solved {
-      return;
-    }
-
+  fn recur(sudoku: Sudoku, state: &mut RecursionState) -> bool {
     // println!("\n{}", sudoku.to_string());
 
-    let mut no_zeros = true;
+    let mut zero_count = 0;
 
     for y in 0..9 {
       for x in 0..9 {
         if *sudoku.get(x, y) == 0 {
-          no_zeros = false;
-
-          for digit in 1..=9 {
-            let mut new_sudoku = sudoku.clone();
-            new_sudoku.change(x, y, digit);
-
-            if state.all_sudokus.par_iter().any(|s| *s == new_sudoku) {
-              continue;
-            }
-
-            state.all_sudokus.push(new_sudoku.clone());
-
-            if state.all_sudokus.len() % 1000 == 0 {
-              println!("\n{}", state.all_sudokus.len());
-            }
-
-            if sudoku.can_place(x, y, digit) {
-              recur(new_sudoku, state);
-            }
-          }
+          zero_count += 1;
         }
       }
     }
 
-    if no_zeros {
-      state.solved = true;
+    if zero_count == 0 {
       state.solved_sudoku = sudoku;
+      return true;
     }
+
+    for y in 0..9 {
+      for x in 0..9 {
+        if *sudoku.get(x, y) == 0 {
+          for digit in 1..=9 {
+            if !sudoku.can_place(x, y, digit) {
+              continue;
+            }
+
+            let mut next_sudoku = sudoku.clone();
+            next_sudoku.change(x, y, digit);
+
+            if recur(next_sudoku, state) {
+              return true;
+            }
+          }
+          return false;
+        }
+      }
+    }
+
+    false
   }
 
-  println!("Initial sudoku:\n{}", sudoku.to_string());
+  let current_time = Instant::now();
 
-  recur(sudoku, &mut state);
+  let solved = recur(sudoku.clone(), &mut state);
 
-  println!("\nSolved sudoku:\n{}", state.solved_sudoku.to_string());
+  let duration = current_time.elapsed();
+
+  SudokuSolution {
+    initial: sudoku.clone(),
+    solution: state.solved_sudoku,
+    duration,
+  }
+}
+
+fn main() {
+  let file_name = "diabolical.txt";
+
+  let file_content = std::fs::read_to_string(file_name).unwrap_or_else(|_| panic!("'{}' not found", file_name));
+
+  let sudokus: Vec<Sudoku> = file_content
+    .lines()
+    .map(|line| Sudoku::from_str(line.split_whitespace().nth(1).unwrap()))
+    .take(10000)
+    .collect();
+
+  let current_time = Instant::now();
+
+  let solutions = sudokus
+    .par_iter()
+    .map(|sudoku| solve_sudoku(sudoku))
+    .collect::<Vec<SudokuSolution>>();
+
+  let duration = current_time.elapsed();
+
+  println!("{:?}", duration);
 }

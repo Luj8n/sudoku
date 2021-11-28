@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[derive(Clone, PartialEq)]
 struct Sudoku {
@@ -79,13 +79,7 @@ impl ToString for Sudoku {
   }
 }
 
-struct SudokuSolution {
-  initial: Sudoku,
-  solution: Sudoku,
-  duration: Duration,
-}
-
-fn solve_sudoku(sudoku: &Sudoku) -> SudokuSolution {
+fn solve_sudoku(sudoku: &Sudoku) -> Sudoku {
   struct RecursionState {
     solved_sudoku: Sudoku,
   }
@@ -96,21 +90,6 @@ fn solve_sudoku(sudoku: &Sudoku) -> SudokuSolution {
 
   fn recur(sudoku: Sudoku, state: &mut RecursionState) -> bool {
     // println!("\n{}", sudoku.to_string());
-
-    let mut zero_count = 0;
-
-    for y in 0..9 {
-      for x in 0..9 {
-        if *sudoku.get(x, y) == 0 {
-          zero_count += 1;
-        }
-      }
-    }
-
-    if zero_count == 0 {
-      state.solved_sudoku = sudoku;
-      return true;
-    }
 
     for y in 0..9 {
       for x in 0..9 {
@@ -132,20 +111,12 @@ fn solve_sudoku(sudoku: &Sudoku) -> SudokuSolution {
       }
     }
 
-    false
+    true
   }
 
-  let current_time = Instant::now();
+  recur(sudoku.clone(), &mut state);
 
-  let solved = recur(sudoku.clone(), &mut state);
-
-  let duration = current_time.elapsed();
-
-  SudokuSolution {
-    initial: sudoku.clone(),
-    solution: state.solved_sudoku,
-    duration,
-  }
+  state.solved_sudoku
 }
 
 fn main() {
@@ -156,15 +127,15 @@ fn main() {
   let sudokus: Vec<Sudoku> = file_content
     .lines()
     .map(|line| Sudoku::from_str(line.split_whitespace().nth(1).unwrap()))
-    .take(10000)
+    .take(20000)
     .collect();
 
   let current_time = Instant::now();
 
-  let solutions = sudokus
+  let _solutions = sudokus
     .par_iter()
     .map(|sudoku| solve_sudoku(sudoku))
-    .collect::<Vec<SudokuSolution>>();
+    .collect::<Vec<Sudoku>>();
 
   let duration = current_time.elapsed();
 
